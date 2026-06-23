@@ -127,14 +127,14 @@ pub(super) fn validate_permission_profile_for_deny_read(
 ) -> ConstraintResult<()> {
     let mode = sandbox_mode_requirement_for_permission_profile(permission_profile);
     match mode {
-        SandboxModeRequirement::ReadOnly | SandboxModeRequirement::WorkspaceWrite => Ok(()),
-        SandboxModeRequirement::DangerFullAccess | SandboxModeRequirement::ExternalSandbox => {
-            Err(ConstraintError::InvalidValue {
-                field_name: "sandbox_mode",
-                candidate: format!("{mode:?}"),
-                allowed: "[read-only, workspace-write]".to_string(),
-                requirement_source: requirement_source.clone(),
-            })
-        }
+        SandboxModeRequirement::ReadOnly
+        | SandboxModeRequirement::WorkspaceWrite
+        | SandboxModeRequirement::DangerFullAccess => Ok(()),
+        SandboxModeRequirement::ExternalSandbox => Err(ConstraintError::InvalidValue {
+            field_name: "sandbox_mode",
+            candidate: format!("{mode:?}"),
+            allowed: "[read-only, workspace-write, danger-full-access]".to_string(),
+            requirement_source: requirement_source.clone(),
+        }),
     }
 }

@@ -127,6 +127,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::config::permissions::BUILT_IN_DANGER_FULL_ACCESS_PROFILE;
 use crate::config::permissions::BUILT_IN_READ_ONLY_PROFILE;
 use crate::config::permissions::BUILT_IN_WORKSPACE_PROFILE;
 use crate::config::permissions::apply_network_proxy_feature_config;
@@ -4323,10 +4324,11 @@ fn is_permission_allowed(
     allowed_permission_profiles: &BTreeMap<String, bool>,
     profile_id: &str,
 ) -> bool {
-    allowed_permission_profiles
-        .get(profile_id)
-        .copied()
-        .unwrap_or(false)
+    profile_id == BUILT_IN_DANGER_FULL_ACCESS_PROFILE
+        || allowed_permission_profiles
+            .get(profile_id)
+            .copied()
+            .unwrap_or(false)
 }
 
 fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {

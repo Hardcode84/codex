@@ -9519,7 +9519,8 @@ async fn requirements_disallowing_default_sandbox_falls_back_to_required_default
 }
 
 #[tokio::test]
-async fn explicit_sandbox_mode_falls_back_when_disallowed_by_requirements() -> std::io::Result<()> {
+async fn explicit_full_access_sandbox_mode_stays_available_when_requirements_force_read_only()
+-> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
@@ -9539,7 +9540,7 @@ async fn explicit_sandbox_mode_falls_back_when_disallowed_by_requirements() -> s
         .await?;
     assert_eq!(
         config.legacy_sandbox_policy(),
-        SandboxPolicy::new_read_only_policy()
+        SandboxPolicy::DangerFullAccess
     );
     Ok(())
 }
@@ -9581,7 +9582,7 @@ allowed_sandbox_implementations = ["elevated"]
 }
 
 #[tokio::test]
-async fn danger_full_access_with_never_is_rejected_when_requirements_force_read_only()
+async fn danger_full_access_with_never_stays_available_when_requirements_force_read_only()
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
@@ -9591,7 +9592,7 @@ sandbox_mode = "danger-full-access"
 "#,
     )?;
 
-    let err = ConfigBuilder::without_managed_config_for_tests()
+    let config = ConfigBuilder::without_managed_config_for_tests()
         .codex_home(codex_home.path().to_path_buf())
         .fallback_cwd(Some(codex_home.path().to_path_buf()))
         .cloud_config_bundle(
@@ -9600,19 +9601,21 @@ sandbox_mode = "danger-full-access"
             ),
         )
         .build()
-        .await
-        .expect_err("requirements-constrained yolo should require sandbox approval");
+        .await?;
 
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(
-        err.to_string(),
-        "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Codex would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode."
+        config.permissions.approval_policy.value(),
+        AskForApproval::Never
+    );
+    assert_eq!(
+        config.permissions.effective_permission_profile(),
+        PermissionProfile::Disabled
     );
     Ok(())
 }
 
 #[tokio::test]
-async fn named_full_access_profile_with_never_is_rejected_when_requirements_force_read_only()
+async fn named_full_access_profile_with_never_stays_available_when_requirements_force_read_only()
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
@@ -9625,7 +9628,7 @@ default_permissions = "dev"
 "#,
     )?;
 
-    let err = ConfigBuilder::without_managed_config_for_tests()
+    let config = ConfigBuilder::without_managed_config_for_tests()
         .codex_home(codex_home.path().to_path_buf())
         .fallback_cwd(Some(codex_home.path().to_path_buf()))
         .cloud_config_bundle(
@@ -9634,19 +9637,28 @@ default_permissions = "dev"
             ),
         )
         .build()
-        .await
-        .expect_err("requirements-constrained full-access profile should require sandbox approval");
+        .await?;
 
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(
-        err.to_string(),
-        "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Codex would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode."
+        config.permissions.approval_policy.value(),
+        AskForApproval::Never
+    );
+    assert!(
+        config
+            .permissions
+            .effective_permission_profile()
+            .file_system_sandbox_policy()
+            .has_full_disk_write_access()
+    );
+    assert_eq!(
+        config.permissions.active_permission_profile(),
+        Some(ActivePermissionProfile::new("dev"))
     );
     Ok(())
 }
 
 #[tokio::test]
-async fn permission_profile_override_falls_back_when_disallowed_by_requirements()
+async fn permission_profile_override_keeps_full_access_available_when_disallowed_by_requirements()
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let config = ConfigBuilder::without_managed_config_for_tests()
@@ -9664,17 +9676,20 @@ async fn permission_profile_override_falls_back_when_disallowed_by_requirements(
         .build()
         .await?;
 
-    let expected_sandbox_policy = SandboxPolicy::new_read_only_policy();
-    assert_eq!(config.legacy_sandbox_policy(), expected_sandbox_policy);
+    assert_eq!(
+        config.legacy_sandbox_policy(),
+        SandboxPolicy::DangerFullAccess
+    );
     assert_eq!(
         config.permissions.effective_permission_profile(),
-        PermissionProfile::read_only()
+        PermissionProfile::Disabled
     );
     Ok(())
 }
 
 #[tokio::test]
-async fn active_profile_is_cleared_when_requirements_force_fallback() -> std::io::Result<()> {
+async fn active_full_access_profile_is_preserved_when_requirements_force_read_only()
+-> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let config = ConfigBuilder::without_managed_config_for_tests()
         .codex_home(codex_home.path().to_path_buf())
@@ -9693,11 +9708,16 @@ async fn active_profile_is_cleared_when_requirements_force_fallback() -> std::io
 
     assert_eq!(
         config.permissions.effective_permission_profile(),
-        PermissionProfile::read_only()
+        PermissionProfile::Disabled
     );
-    assert_eq!(config.permissions.active_permission_profile(), None);
+    assert_eq!(
+        config.permissions.active_permission_profile(),
+        Some(ActivePermissionProfile::new(
+            BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS
+        ))
+    );
     assert!(
-        config.startup_warnings.iter().any(|warning| warning
+        !config.startup_warnings.iter().any(|warning| warning
             .contains("Configured value for `permission_profile` is disallowed by requirements")),
         "{:?}",
         config.startup_warnings

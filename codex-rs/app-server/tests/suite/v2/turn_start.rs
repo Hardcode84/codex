@@ -72,7 +72,6 @@ use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::Settings;
-use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
@@ -1296,7 +1295,7 @@ async fn turn_start_rejects_invalid_permission_selection_before_starting_turn() 
                 text: "Hello".to_string(),
                 text_elements: Vec::new(),
             }],
-            permissions: Some(BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS.to_string()),
+            permissions: Some(":missing-profile".to_string()),
             ..Default::default()
         })
         .await?;
@@ -1310,14 +1309,7 @@ async fn turn_start_rejects_invalid_permission_selection_before_starting_turn() 
     assert!(
         err.error
             .message
-            .contains("`approval_policy = \"never\"` cannot be used"),
-        "unexpected error message: {}",
-        err.error.message
-    );
-    assert!(
-        err.error
-            .message
-            .contains("requirements do not allow `sandbox_mode = \"danger-full-access\"`"),
+            .contains("unknown built-in profile `:missing-profile`"),
         "unexpected error message: {}",
         err.error.message
     );

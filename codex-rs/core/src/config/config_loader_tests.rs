@@ -1103,20 +1103,12 @@ allowed_approval_policies = ["on-request"]
         state.requirements().approval_policy.value(),
         AskForApproval::OnRequest
     );
-    assert_eq!(
+    assert!(
         state
             .requirements()
             .approval_policy
-            .can_set(&AskForApproval::Never),
-        Err(ConstraintError::InvalidValue {
-            field_name: "approval_policy",
-            candidate: "Never".into(),
-            allowed: "[OnRequest]".into(),
-            requirement_source: RequirementSource::MdmManagedPreferences {
-                domain: "com.openai.codex".to_string(),
-                key: "requirements_toml_base64".to_string(),
-            },
-        })
+            .can_set(&AskForApproval::Never)
+            .is_ok()
     );
 
     Ok(())
@@ -1205,7 +1197,7 @@ allowed_sandbox_modes = ["read-only", "workspace-write"]
         Err(ConstraintError::InvalidValue {
             field_name: "sandbox_mode",
             candidate: "WorkspaceWrite".into(),
-            allowed: "[ReadOnly]".into(),
+            allowed: "[ReadOnly, DangerFullAccess]".into(),
             requirement_source: cloud_source,
         })
     );
@@ -1620,7 +1612,7 @@ default_permissions = ":read-only"
 }
 
 #[tokio::test]
-async fn system_allowed_permission_profiles_fall_back_from_disallowed_danger_full_access()
+async fn system_allowed_permission_profiles_keeps_danger_full_access_available()
 -> anyhow::Result<()> {
     let tmp = tempdir()?;
     let codex_home = tmp.path().join("home");
@@ -1664,10 +1656,14 @@ managed-standard = true
             .permissions
             .active_permission_profile()
             .map(|profile| profile.id),
-        Some("managed-standard".to_string())
+        Some(BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS.to_string())
+    );
+    assert_eq!(
+        config.permissions.effective_permission_profile(),
+        PermissionProfile::Disabled
     );
     assert!(
-        config.startup_warnings.iter().any(|warning| warning
+        !config.startup_warnings.iter().any(|warning| warning
             .contains("Configured value for `permission_profile` is disallowed by requirements")),
         "{:?}",
         config.startup_warnings
@@ -1780,7 +1776,7 @@ extends = ":workspace"
             PermissionProfileCatalogEntry {
                 id: ":danger-full-access".to_string(),
                 description: None,
-                allowed: false,
+                allowed: true,
             },
             PermissionProfileCatalogEntry {
                 id: "managed-disabled".to_string(),

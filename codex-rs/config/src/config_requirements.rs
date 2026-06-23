@@ -1301,12 +1301,17 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
 
         let approval_policy = match allowed_approval_policies {
             Some(Sourced {
-                value: policies,
+                value: mut policies,
                 source: requirement_source,
             }) => {
                 let Some(initial_value) = policies.first().copied() else {
                     return Err(ConstraintError::empty_field("allowed_approval_policies"));
                 };
+                // Full Access uses `never`, so keep it selectable even when
+                // requirements constrain the other approval modes.
+                if !policies.contains(&AskForApproval::Never) {
+                    policies.push(AskForApproval::Never);
+                }
 
                 let requirement_source_for_error = requirement_source.clone();
                 let constrained = Constrained::new(initial_value, move |candidate| {
@@ -1362,7 +1367,7 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
         let default_permission_profile = PermissionProfile::read_only();
         let permission_profile = match allowed_sandbox_modes {
             Some(Sourced {
-                value: modes,
+                value: mut modes,
                 source: requirement_source,
             }) => {
                 if !modes.contains(&SandboxModeRequirement::ReadOnly) {
@@ -1374,6 +1379,11 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
                         requirement_source,
                     });
                 };
+                // Full Access should remain available even when requirements
+                // constrain the other sandbox modes.
+                if !modes.contains(&SandboxModeRequirement::DangerFullAccess) {
+                    modes.push(SandboxModeRequirement::DangerFullAccess);
+                }
 
                 let requirement_source_for_error = requirement_source.clone();
                 let constrained = Constrained::new(default_permission_profile, move |candidate| {
@@ -2542,25 +2552,17 @@ allowed_approvals_reviewers = ["user"]
         target.merge_unset_fields(source_location.clone(), source);
         let requirements = ConfigRequirements::try_from(target)?;
 
-        assert_eq!(
-            requirements.approval_policy.can_set(&AskForApproval::Never),
-            Err(ConstraintError::InvalidValue {
-                field_name: "approval_policy",
-                candidate: "Never".into(),
-                allowed: "[OnRequest]".into(),
-                requirement_source: source_location.clone(),
-            })
+        assert!(
+            requirements
+                .approval_policy
+                .can_set(&AskForApproval::Never)
+                .is_ok()
         );
-        assert_eq!(
+        assert!(
             requirements
                 .permission_profile
-                .can_set(&PermissionProfile::Disabled),
-            Err(ConstraintError::InvalidValue {
-                field_name: "sandbox_mode",
-                candidate: "DangerFullAccess".into(),
-                allowed: "[ReadOnly]".into(),
-                requirement_source: source_location.clone(),
-            })
+                .can_set(&PermissionProfile::Disabled)
+                .is_ok()
         );
         assert_eq!(
             requirements
@@ -2598,11 +2600,13 @@ allowed_approvals_reviewers = ["user"]
         let requirements = ConfigRequirements::try_from(target)?;
 
         assert_eq!(
-            requirements.approval_policy.can_set(&AskForApproval::Never),
+            requirements
+                .approval_policy
+                .can_set(&AskForApproval::UnlessTrusted),
             Err(ConstraintError::InvalidValue {
                 field_name: "approval_policy",
-                candidate: "Never".into(),
-                allowed: "[OnRequest]".into(),
+                candidate: "UnlessTrusted".into(),
+                allowed: "[OnRequest, Never]".into(),
                 requirement_source: source_location,
             })
         );
@@ -2682,14 +2686,11 @@ allowed_approvals_reviewers = ["user"]
                 .can_set(&AskForApproval::OnRequest)
                 .is_ok()
         );
-        assert_eq!(
-            requirements.approval_policy.can_set(&AskForApproval::Never),
-            Err(ConstraintError::InvalidValue {
-                field_name: "approval_policy",
-                candidate: "Never".into(),
-                allowed: "[UnlessTrusted, OnRequest]".into(),
-                requirement_source: RequirementSource::Unknown,
-            })
+        assert!(
+            requirements
+                .approval_policy
+                .can_set(&AskForApproval::Never)
+                .is_ok()
         );
         assert!(
             requirements
@@ -2857,16 +2858,11 @@ allowed_approvals_reviewers = ["user"]
                 .can_set(&workspace_write_profile)
                 .is_ok()
         );
-        assert_eq!(
+        assert!(
             requirements
                 .permission_profile
-                .can_set(&PermissionProfile::Disabled),
-            Err(ConstraintError::InvalidValue {
-                field_name: "sandbox_mode",
-                candidate: "DangerFullAccess".into(),
-                allowed: "[ReadOnly, WorkspaceWrite]".into(),
-                requirement_source: RequirementSource::Unknown,
-            })
+                .can_set(&PermissionProfile::Disabled)
+                .is_ok()
         );
         assert_eq!(
             requirements
@@ -2877,7 +2873,7 @@ allowed_approvals_reviewers = ["user"]
             Err(ConstraintError::InvalidValue {
                 field_name: "sandbox_mode",
                 candidate: "ExternalSandbox".into(),
-                allowed: "[ReadOnly, WorkspaceWrite]".into(),
+                allowed: "[ReadOnly, WorkspaceWrite, DangerFullAccess]".into(),
                 requirement_source: RequirementSource::Unknown,
             })
         );
@@ -2966,16 +2962,11 @@ allowed_approvals_reviewers = ["user"]
                 .can_set(&workspace_write_profile)
                 .is_ok()
         );
-        assert_eq!(
+        assert!(
             requirements
                 .permission_profile
-                .can_set(&PermissionProfile::Disabled),
-            Err(ConstraintError::InvalidValue {
-                field_name: "sandbox_mode",
-                candidate: "DangerFullAccess".into(),
-                allowed: "[ReadOnly, WorkspaceWrite]".into(),
-                requirement_source: source,
-            })
+                .can_set(&PermissionProfile::Disabled)
+                .is_ok()
         );
 
         Ok(())
@@ -2997,16 +2988,11 @@ allowed_approvals_reviewers = ["user"]
         requirements_with_sources.merge_unset_fields(RequirementSource::Unknown, requirements_toml);
         let requirements = ConfigRequirements::try_from(requirements_with_sources)?;
 
-        assert_eq!(
+        assert!(
             requirements
                 .permission_profile
-                .can_set(&PermissionProfile::Disabled),
-            Err(ConstraintError::InvalidValue {
-                field_name: "sandbox_mode",
-                candidate: "DangerFullAccess".into(),
-                allowed: "[ReadOnly]".into(),
-                requirement_source: RequirementSource::Unknown,
-            })
+                .can_set(&PermissionProfile::Disabled)
+                .is_ok()
         );
 
         Ok(())
@@ -3043,7 +3029,7 @@ allowed_approvals_reviewers = ["user"]
             Err(ConstraintError::InvalidValue {
                 field_name: "sandbox_mode",
                 candidate: "WorkspaceWrite".into(),
-                allowed: "[ReadOnly]".into(),
+                allowed: "[ReadOnly, DangerFullAccess]".into(),
                 requirement_source: high_source,
             })
         );

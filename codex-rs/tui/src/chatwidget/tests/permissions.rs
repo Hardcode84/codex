@@ -110,7 +110,7 @@ async fn profile_permissions_selection_popup_snapshot() {
 }
 
 #[tokio::test]
-async fn profile_permissions_selection_popup_with_disallowed_full_access_snapshot() {
+async fn profile_permissions_selection_popup_required_read_only_shows_full_access_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.config.explicit_permission_profile_mode = true;
     chat.config.config_layer_stack = requirements_stack(codex_config::ConfigRequirementsToml {
@@ -124,7 +124,7 @@ async fn profile_permissions_selection_popup_with_disallowed_full_access_snapsho
     chat.open_permissions_popup();
 
     assert_chatwidget_snapshot!(
-        "profile_permissions_selection_popup_with_disallowed_full_access",
+        "profile_permissions_selection_popup_with_required_read_only_still_shows_full_access",
         render_bottom_popup(&chat, /*width*/ 80)
     );
 }
